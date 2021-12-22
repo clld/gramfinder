@@ -1,7 +1,9 @@
+<%inherit file="../snippet.mako"/>
+
 <ul>
-    % for p, f in pages:
+    % for p, f in u.iter_fragments(ctx, req):
         <li>
-            ${p.number}, ${p.label or ''}
+            page ${p.number}
             ${f|n}
         </li>
     % endfor

@@ -8,10 +8,12 @@
 </form>
 
 % if hits:
-    ${map.render()|n}
-    <p>
+    <h3>
         ${len(by_lg)} languoids with descriptions matching the query "${q}"
-    </p>
+    </h3>
+
+    ${map.render()|n}
+
     <table class="table table-nonfluid">
         <thead>
         <tr>

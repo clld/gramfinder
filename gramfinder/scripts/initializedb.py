@@ -24,26 +24,29 @@ from sqlalchemy import func, Index
 DATA = pathlib.Path(__file__).parent.parent.parent.parent
 INDEX = 'gramfinder'
 
-#
-# FIXME: split pages at
-PAGENO_PATTERN = re.compile('\f(?P<no>[^\s]*)')
-#
-
-
-def iter_pages(text):
-    label = None
-    for i, t in enumerate(PAGENO_PATTERN.split(text)):
-        if i % 2 == 0:
-            yield t, label
-        else:
-            label = t or None
+STEM = {
+    'arb': 'arabic',
+    'dan': 'danish',
+    'nld': 'dutch',
+    'fra': 'french',
+    'deu': 'german',
+    'ind': 'indonesian',
+    'ita': 'italian',
+    #'pes': '',  # No Persian stemmer available
+    'rus': 'russian',
+    'spa': 'spanish',
+    'swe': 'swedish',
+    'tur': 'turkish',
+}
 
 
 def tsvector(text, lg):  # pragma: no cover
-    lang = 'english'
-    if '[tur]' in lg:
-        lang = 'turkish'
-    return func.to_tsvector(lang, text)
+    for code, name in STEM.items():
+        if '[{}]'.format(code) in lg:
+            break
+    else:
+        name = 'english'
+    return func.to_tsvector(name, text)
 
 
 def get_text(p):
@@ -70,9 +73,9 @@ def main(args):
         id=gramfinder.__name__,
         domain='',
 
-        publisher_name="Max Planck Institute for the Science of Human History",
-        publisher_place="Jena",
-        publisher_url="http://www.shh.mpg.de",
+        publisher_name="Max Planck Institute for Evolutionary Anthropology",
+        publisher_place="Leipzig",
+        publisher_url="http://www.eva.mpg.de",
         license="http://creativecommons.org/licenses/by/4.0/",
         jsondata={
             'license_icon': 'cc-by.png',
@@ -82,37 +85,52 @@ def main(args):
 
     ndocs = 0
     gl = Glottolog(args.glottolog)
+    dt_by_id = {}
+    for ht in gl.hhtypes:
+        dt_by_id[ht.id] = ht
+        data.add(
+            models.Doctype, ht.id, id=ht.id, name=ht.name, description=ht.description, rank=ht.rank)
     langs_by_id = gl.languoids_by_code()
-    bibdata = BibFile(DATA.joinpath('hh10000.bib'))
-    for e in tqdm.tqdm(bibdata.iterentries()):
-        if 'besttxt' in e.fields:
-            ndocs += 1
-            #if ndocs > 100:
-            #    break
-            #print(e.key)
-            besttxt = DATA.joinpath('more', *e.fields['besttxt'].split('\\'))
-            assert besttxt.exists(), str(besttxt)
 
-            rec = bibtex.Record(e.type, e.key, **e.fields)
-            src = data.add(models.Document, e.key, _obj=bibtex2source(rec, cls=models.Document))
+    for e in tqdm.tqdm(itertools.filterfalse(
+            lambda i: not i.fields.get('besttxt'),
+            BibFile(DATA.joinpath('hh10000.bib')).iterentries())):
+        ndocs += 1
+        if ndocs > 100:
+            break
+        #print(e.key)
+        besttxt = DATA.joinpath('more', *e.fields['besttxt'].split('\\'))
+        assert besttxt.exists(), str(besttxt)
 
-            i = 0
-            for i, (p, label) in enumerate(iter_pages(get_text(besttxt)), start=1):
-                DBSession.add(models.Page(
-                    number=i,
-                    document=src,
-                    label=label,
-                    text=p,
-                    terms=tsvector(p, e.fields.get('inlg') or '')))
-            print('{}: {} pages'.format(e.key, i))
+        rec = bibtex.Record(e.type, e.key, **e.fields)
+        src = data.add(models.Document, e.key, _obj=bibtex2source(rec, cls=models.Document))
+        src.inlg = e.fields.get('inlg')
 
-            langs, _ = e.languoids(langs_by_id)
-            src.nlangs = len(langs)
-            src.langs = ' '.join({l.id for l in langs})
-            for l in langs:
-                lg = data['Language'].get(l.id)
-                if not lg:
-                    lg = data.add(common.Language, l.id, id=l.id, name=l.name, latitude=l.latitude, longitude=l.longitude)
+        i = 0
+        for i, t in enumerate(get_text(besttxt).split('\f'), start=1):
+            DBSession.add(models.Page(
+                number=i,
+                document=src,
+                text=t,
+                terms=tsvector(t, e.fields.get('inlg') or '')))
+        src.npages = i
+        #print('{}: {} pages'.format(e.key, i))
+
+        langs, _ = e.languoids(langs_by_id)
+        src.nlangs = len(langs)
+        src.langs = ' '.join({l.id for l in langs})
+        for l in langs:
+            if l.id not in data['Language']:
+                data.add(
+                    common.Language, l.id,
+                    id=l.id, name=l.name, latitude=l.latitude, longitude=l.longitude)
+
+        types = []
+        for ht in e.doctypes(dt_by_id)[0]:
+            types.append((ht.name, ht.rank))
+            DBSession.add(models.DocumentDoctype(document=src, doctype=data['Doctype'][ht.id]))
+        src.types = ';'.join([i[0] for i in types])
+        src.maxrank = max([i[1] for i in types])
 
 
 def prime_cache(args):

@@ -1,4 +1,4 @@
-import collections
+import functools
 
 from pyramid.config import Configurator
 
@@ -20,5 +20,11 @@ def main(global_config, **settings):
     config.include('clld.web.app')
 
     config.add_route_and_view('search', '/search', views.search, renderer='search.mako')
+    config.register_menu(
+        ('dataset', functools.partial(app.menu_item, 'dataset', label='Home')),
+        ('languages', functools.partial(app.menu_item, 'languages', label='Languages')),
+        ('sources', functools.partial(app.menu_item, 'sources', label='Sources')),
+        ('search', functools.partial(app.menu_item, 'search', label='Search')),
+    )
 
     return config.make_wsgi_app()

@@ -1,8 +1,3 @@
-from datetime import datetime
-from elasticsearch_dsl import Document as ESDoc
-from elasticsearch_dsl import Date, Integer, Keyword, Text
-from elasticsearch_dsl import Integer as IntegerField
-from elasticsearch_dsl.connections import connections
 from zope.interface import implementer
 from sqlalchemy import (
     Column,
@@ -36,6 +31,23 @@ class Document(CustomModelMixin, common.Source):
     pk = Column(Integer, ForeignKey('source.pk'), primary_key=True)
     nlangs = Column(Integer)
     langs = Column(Unicode)
+    inlg = Column(Unicode)
+    npages = Column(Integer)
+    types = Column(Unicode)
+    maxrank = Column(Integer)
+
+
+class Doctype(Base, common.IdNameDescriptionMixin):
+    rank = Column(Unicode)
+
+
+class DocumentDoctype(Base):
+    __table_args__ = (UniqueConstraint('document_pk', 'doctype_pk'),)
+
+    document_pk = Column(Integer, ForeignKey('document.pk'), nullable=False)
+    doctype_pk = Column(Integer, ForeignKey('doctype.pk'), nullable=False)
+    document = relationship(Document, backref='doctype_assocs')
+    doctype = relationship(Doctype, backref='document_assocs')
 
 
 class Page(Base):
@@ -45,26 +57,3 @@ class Page(Base):
     terms = Column(TSVECTOR)
     document_pk = Column(Integer, ForeignKey('source.pk'))
     document = relationship(Document, backref='scans')
-
-
-class Grammar(ESDoc):
-    text = Text(
-        analyzer='snowball',
-    )
-    doctypes = Keyword()
-
-    #
-    # FIXME:
-    languages = Keyword()
-    numlangs = IntegerField()
-
-    class Index:
-        name = 'gramfinder'
-        settings = {
-            'highlight.max_analyzed_offset': 10000000,
-        }
-
-
-def es_schema(es):
-    # create the mappings in elasticsearch
-    Grammar.init(using=es)
