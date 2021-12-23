@@ -1,64 +1,20 @@
-import re
 import pathlib
 import itertools
-import collections
 
 import tqdm
-from pycldf import Sources, Source
-from clldutils.misc import nfilter
-from clldutils.color import qualitative_colors
 from clld.cliutil import Data, bibtex2source
 from clld.db.meta import DBSession
 from clld.db.models import common
 from clld.lib import bibtex
 from clld.db import fts
-from pybtex.database import parse_string
-from unidecode import unidecode
 from pyglottolog.references import BibFile
 from pyglottolog import Glottolog
+from unidecode import unidecode
 
 import gramfinder
 from gramfinder import models
-from sqlalchemy import func, Index
 
 DATA = pathlib.Path(__file__).parent.parent.parent.parent
-INDEX = 'gramfinder'
-
-STEM = {
-    'arb': 'arabic',
-    'dan': 'danish',
-    'nld': 'dutch',
-    'fra': 'french',
-    'deu': 'german',
-    'ind': 'indonesian',
-    'ita': 'italian',
-    #'pes': '',  # No Persian stemmer available
-    'rus': 'russian',
-    'spa': 'spanish',
-    'swe': 'swedish',
-    'tur': 'turkish',
-}
-
-
-def tsvector(text, lg):  # pragma: no cover
-    for code, name in STEM.items():
-        if '[{}]'.format(code) in lg:
-            break
-    else:
-        name = 'english'
-    return func.to_tsvector(name, text)
-
-
-def get_text(p):
-    try:
-       res = p.read_text(encoding='utf-8')
-    except UnicodeDecodeError:
-        try:
-            res = p.read_text(encoding='cp1252')
-        except UnicodeDecodeError:
-            res = p.read_text(encoding='latin1')
-    res = unidecode(res)
-    return res.replace("\x00", "")
 
 
 def main(args):
@@ -83,8 +39,9 @@ def main(args):
 
     )
 
-    ndocs = 0
     gl = Glottolog(args.glottolog)
+    #bib = BibFile(DATA.joinpath('hh10000.bib'))
+    bib = gl.bibfiles['hh']
     dt_by_id = {}
     for ht in gl.hhtypes:
         dt_by_id[ht.id] = ht
@@ -93,28 +50,21 @@ def main(args):
     langs_by_id = gl.languoids_by_code()
 
     for e in tqdm.tqdm(itertools.filterfalse(
-            lambda i: not i.fields.get('besttxt'),
-            BibFile(DATA.joinpath('hh10000.bib')).iterentries())):
-        ndocs += 1
-        if ndocs > 100:
-            break
-        #print(e.key)
-        besttxt = DATA.joinpath('more', *e.fields['besttxt'].split('\\'))
-        assert besttxt.exists(), str(besttxt)
+            lambda i: not i.fields.get('besttxt'), bib.iterentries())):
+        besttxt = DATA.joinpath(*e.fields['besttxt'].split('\\'))
 
         rec = bibtex.Record(e.type, e.key, **e.fields)
-        src = data.add(models.Document, e.key, _obj=bibtex2source(rec, cls=models.Document))
+        obj = bibtex2source(rec, cls=models.Document)
+        obj.id = unidecode(e.key).replace(':', '_').replace('-', '_')
+        src = data.add(models.Document, e.key, _obj=obj)
         src.inlg = e.fields.get('inlg')
+        src.besttxt = '/'.join(e.fields['besttxt'].split('\\')) if besttxt.exists() else None
+        if not src.besttxt:
+            print(e.fields['besttxt'])
 
-        i = 0
-        for i, t in enumerate(get_text(besttxt).split('\f'), start=1):
-            DBSession.add(models.Page(
-                number=i,
-                document=src,
-                text=t,
-                terms=tsvector(t, e.fields.get('inlg') or '')))
-        src.npages = i
-        #print('{}: {} pages'.format(e.key, i))
+        #
+        # indexing!
+        #
 
         langs, _ = e.languoids(langs_by_id)
         src.nlangs = len(langs)

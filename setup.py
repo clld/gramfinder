@@ -25,8 +25,8 @@ setup(
         'unidecode',
         'clldmpg',
 
-],
-extras_require={
+    ],
+    extras_require={
         'dev': ['flake8', 'waitress'],
         'test': [
             'mock',
@@ -40,7 +40,8 @@ extras_require={
         ],
     },
     test_suite="gramfinder",
-    entry_points="""\
-    [paste.app_factory]
-    main = gramfinder:main
-""")
+    entry_points={
+        'paste.app_factory': ['main=gramfinder:main'],
+        'console_scripts': ['gramfinder=gramfinder.__main__:main'],
+    },
+)

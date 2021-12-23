@@ -35,6 +35,7 @@ class Document(CustomModelMixin, common.Source):
     npages = Column(Integer)
     types = Column(Unicode)
     maxrank = Column(Integer)
+    besttxt = Column(Unicode)
 
 
 class Doctype(Base, common.IdNameDescriptionMixin):

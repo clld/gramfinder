@@ -1,4 +1,5 @@
 import math
+import time
 import collections
 
 from sqlalchemy import func
@@ -9,6 +10,7 @@ from clld.db.models import common
 from matplotlib.cm import viridis
 from matplotlib.colors import to_hex
 from clldutils.svg import icon, data_url
+from clld.db.util import icontains
 
 from gramfinder import models
 from gramfinder.maps import SearchMap
@@ -26,6 +28,8 @@ def vir(n):
 
 
 def search(ctx, req):
+    s = time.time()
+    print('searching ...')
     q = req.params.get('q')
     if not q:
         return {'hits': [], 'q': ''}
@@ -33,6 +37,7 @@ def search(ctx, req):
     res =  DBSession\
         .query(models.Document, func.count(models.Page.pk))\
         .join(models.Page)\
+        .filter(icontains(models.Document.types, 'grammar'))\
         .filter(search_col(models.Page.terms, q))\
         .group_by(models.Document.pk, common.Source.pk)\
         .all()
@@ -51,7 +56,7 @@ def search(ctx, req):
 
     langs = {l.id: l for l in DBSession.query(common.Language).filter(common.Language.id.in_(list(by_lg)))}
     #print(len(res))
-    return {
+    res = {
         'map': SearchMap(
             (
                 [langs[lid] for lid in by_lg],
@@ -64,3 +69,5 @@ def search(ctx, req):
         'by_lg': by_lg,
         'langs': langs,
     }
+    print('... done: {}'.format(time.time() - s))
+    return res
