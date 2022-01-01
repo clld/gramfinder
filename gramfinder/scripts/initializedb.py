@@ -14,8 +14,7 @@ from unidecode import unidecode
 import gramfinder
 from gramfinder import models
 
-DATA = pathlib.Path(__file__).parent.parent.parent.parent
-
+DATA = pathlib.Path(__file__).parent.parent.parent.parent.joinpath("dbs\\") if pathlib.Path(__file__).parent.parent.parent.parent.joinpath("dbs\\").exists() else pathlib.Path(__file__).parent.parent.parent.parent
 
 def main(args):
     assert DATA.exists(), str(DATA)
@@ -39,7 +38,7 @@ def main(args):
 
     )
 
-    gl = Glottolog(args.glottolog)
+    gl = Glottolog(args.glottolog or "..\\glottolog\\")
     #bib = BibFile(DATA.joinpath('hh10000.bib'))
     bib = gl.bibfiles['hh']
     dt_by_id = {}
@@ -60,9 +59,9 @@ def main(args):
         src.inlg = e.fields.get('inlg')
         src.besttxt = '/'.join(e.fields['besttxt'].split('\\')) if besttxt.exists() else None
         if not src.besttxt:
-            print(e.fields['besttxt'])
-
-        #
+            print("MISSING", e.fields['besttxt'], DATA, besttxt)
+            break
+g        #
         # indexing!
         #
 
