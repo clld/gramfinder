@@ -16,7 +16,7 @@ from sqlalchemy.dialects.postgresql import TSVECTOR
 from clld import interfaces
 from clld.db.meta import Base, CustomModelMixin
 from clld.db.models import common
-
+from clld_glottologfamily_plugin.models import HasFamilyMixin
 
 #-----------------------------------------------------------------------------
 # specialized common mapper classes
@@ -38,9 +38,16 @@ class Document(CustomModelMixin, common.Source):
     besttxt = Column(Unicode)
 
 
+@implementer(interfaces.ILanguage)
+class GramfinderLanguage(CustomModelMixin, common.Language, HasFamilyMixin):
+    pk = Column(Integer, ForeignKey('language.pk'), primary_key=True)
+    macroarea = Column(Unicode)
+    nsources = Column(Integer) #Ugly, since it's derivable form the DB but I don't know how to make SQL views in this system
+    hid = Column(Unicode, unique=True) 
+    
 class Doctype(Base, common.IdNameDescriptionMixin):
-    rank = Column(Unicode)
-
+    rank = Column(Integer)
+    ndocs = Column(Integer) #Ugly, since it's derivable form the DB but I don't know how to make SQL views in this system
 
 class DocumentDoctype(Base):
     __table_args__ = (UniqueConstraint('document_pk', 'doctype_pk'),)
