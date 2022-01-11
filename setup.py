@@ -20,6 +20,7 @@ setup(
     zip_safe=False,
     install_requires=[
         'clld',  # >=7.0
+        'clld_glottologfamily_plugin',
         'pyglottolog',
         'matplotlib',
         'unidecode',

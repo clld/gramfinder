@@ -16,7 +16,7 @@ from sqlalchemy.dialects.postgresql import TSVECTOR
 from clld import interfaces
 from clld.db.meta import Base, CustomModelMixin
 from clld.db.models import common
-
+from clld_glottologfamily_plugin.models import HasFamilyMixin
 
 #-----------------------------------------------------------------------------
 # specialized common mapper classes
@@ -25,21 +25,37 @@ from clld.db.models import common
 
 @implementer(interfaces.ISource)
 class Document(CustomModelMixin, common.Source):
-    """Words are units of a particular language, but are still considered part of a
-    dictionary, i.e. part of a contribution.
-    """
     pk = Column(Integer, ForeignKey('source.pk'), primary_key=True)
-    nlangs = Column(Integer)
     langs = Column(Unicode)
+    nlangs = Column(Integer)
     inlg = Column(Unicode)
     npages = Column(Integer)
+    besttxt = Column(Unicode)
     types = Column(Unicode)
     maxrank = Column(Integer)
-    besttxt = Column(Unicode)
+
+    @property
+    def maxtype(self):
+        for dta in self.doctype_assocs:
+            if dta.doctype.rank == self.maxrank:
+                return dta.doctype
+
+
+@implementer(interfaces.ILanguage)
+class GramfinderLanguage(CustomModelMixin, common.Language, HasFamilyMixin):
+    pk = Column(Integer, ForeignKey('language.pk'), primary_key=True)
+    macroarea = Column(Unicode)
+    hid = Column(Unicode, unique=True)
+    nsources = Column(Integer)
+
+    @property
+    def sorted_sources(self):
+        return sorted(self.sources, key=lambda src: (-src.maxrank, -src.npages))
 
 
 class Doctype(Base, common.IdNameDescriptionMixin):
-    rank = Column(Unicode)
+    rank = Column(Integer)
+    ndocs = Column(Integer)
 
 
 class DocumentDoctype(Base):

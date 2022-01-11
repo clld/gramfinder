@@ -1,15 +1,56 @@
 <%inherit file="${context.get('request').registry.settings.get('clld.app_template', 'app.mako')}"/>
 <%namespace name="util" file="util.mako"/>
+<%block name="head">
+    <link href="${request.static_url('clld:web/static/css/select2.css')}"
+          rel="stylesheet">
+    <script src="${request.static_url('clld:web/static/js/select2.js')}"></script>
+</%block>
+
+<%def name="sidebar()">
+    <div class="well">
+        <form class="form-horizontal" action="${req.url}">
+            <legend>Search query</legend>
+            % for name, iso in inlgs:
+                <div class="control-group">
+                    <label class="control-label" for="query${iso}">${name}</label>
+                    <div class="controls">
+                        <input type="text" id="query${iso}" name="query-${iso}" placeholder="query" class="search-query"
+                               value="${q.get(iso) or ''}">
+                    </div>
+                </div>
+            % endfor
+            <div class="control-group">
+                <label class="control-label" for="queryany">Any language</label>
+                <div class="controls">
+                    <input type="text" id="queryany" name="query-any" placeholder="query" class="search-query"
+                           value="${q.get('any') or ''}">
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label" for="doctypes">Document types</label>
+                <div class="controls">
+                    ${ms.render()|n}
+                    <span class="help-block">Start typing the document type in the field above.</span>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <div class="controls">
+                    <button type="submit" class="btn">Search</button>
+                </div>
+            </div>
+
+        </form>
+    </div>
+</%def>
 
 
-<form class="form-search" action="${req.url}">
-    <input name="q" type="text" class="input-medium search-query" value="${q}">
-    <button type="submit" class="btn">Search</button>
-</form>
+    <h2>Search</h2>
 
 % if hits:
     <h3>
-        ${len(by_lg)} languoids with descriptions matching the query "${q}"
+        ${len(by_lg)} languoids with matching descriptions
     </h3>
 
     ${map.render()|n}
@@ -45,7 +86,7 @@
                             % for doc, c in docs:
                                 <li>${h.link(req, doc)}
                                     matches on ${c} pages
-                                    <a onclick="$('#doc-${doc.pk}').load('${req.route_url('source_alt', id=doc.id, ext='snippet.html', _query=dict(q=q))}');">
+                                    <a onclick="$('#doc-${doc.pk}').load('${req.route_url('source_alt', id=doc.id, ext='snippet.html', _query={'query-{}'.format(k): v for k, v in q.items() if k == doc.inlg or k == 'any'})}');">
                                         show</a>
                                     <div id="doc-${doc.pk}"></div>
                                 </li>

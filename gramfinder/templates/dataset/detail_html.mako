@@ -9,7 +9,7 @@
     </div>
 </%def>
 
-<h2>Welcome to gramfinder</h2>
+<h2>Welcome to Gramfinder</h2>
 
 <p class="lead">
     Abstract.
