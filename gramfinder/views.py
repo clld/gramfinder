@@ -1,8 +1,9 @@
 import math
 import time
+import itertools
 import collections
 
-from sqlalchemy import func, or_, and_
+from sqlalchemy import func, or_, and_, desc
 from unidecode import unidecode
 from clld.db import fts
 from clld.db.meta import DBSession
@@ -11,40 +12,55 @@ from matplotlib.cm import viridis
 from matplotlib.colors import to_hex
 from clldutils.svg import icon, data_url
 from clld.db.util import icontains
+from clld.web.util.multiselect import MultiSelect
 
 from gramfinder import models
 from gramfinder.maps import SearchMap
+from gramfinder import config
 
-def search_col(col, qs):  # pragma: no cover
-    #qs = qs.replace(' OR ', ' | ')
-    #qs = qs.replace(' AND ', ' & ')
-    query = func.websearch_to_tsquery('english', unidecode(qs))
-    return col.op('@@')(query)
 
 
 def vir(n):
     return to_hex(viridis(float(n)))
 
 
-def search(ctx, req, default_doctypes = set(["grammar", "grammar_sketch"]), inlgs = [("English", "eng"), ("French", "fra"), ("German", "deu"), ("Spanish", "spa"), ("Russian", "rus"), ("Portuguese", "por"), ("Indonesian", "ind"), ("Chinese", "cmn"), ("Dutch", "nld"), ("Swedish", "swe")]):
-    doctypes = DBSession.query(models.Doctype).order_by(models.Doctype.rank.desc())
+def search(ctx, req):
+    doctypes = DBSession.query(models.Doctype).order_by(desc(models.Doctype.rank))
+    inlgs = [(v.capitalize(), k) for k, v in config.inlgs().items()]
+    selected_doctypes = req.params.getall('doctypes') or ["grammar", "grammar_sketch"]
+
+    tmpl = {
+        'hits': [],
+        'q': {},
+        'inlgs': inlgs,
+        'ms': MultiSelect(
+            req,
+            'doctypes',
+            'doctypes',
+            collection=doctypes,
+            selected=[dt for dt in doctypes if dt.id in (selected_doctypes)])
+    }
 
     s = time.time()
     print('searching ...')
-    #q = req.params.get('q')
-    #print(req.params) #, dts)
-    qs = {x.replace("q_", ""): xv for (x, xv) in req.params.items() if x.startswith("q_") and xv.strip()}
-    qlgs = {x.replace("s_", ""): xv for (x, xv) in req.params.items() if x.startswith("s_")}
-    if not qs:
-        return {'hits': [], 'qs': {}, 'qlgs': qlgs, 'doctypes': [(dt.id, dt.ndocs, dt.id in default_doctypes) for dt in doctypes], 'inlgs': inlgs}
+    q = {t.partition('-')[2]: s for t, s in req.params.items() if t.startswith('query-') and s.strip()}
+    if not q:
+        return tmpl
 
     by_lg = collections.defaultdict(list)
-    selected_doctypes = set(dt.id for dt in doctypes if req.params.get(dt.id) == "on")
-    qinlgtyp = lambda q, inlg, doctypes = selected_doctypes: and_(models.Document.types.in_(selected_doctypes), inlg == "ANY" or models.Document.inlg == inlg, search_col(models.Page.terms, q))
+
+    def qinlgtyp(q, inlg):
+        if inlg == 'any':
+            return config.tsearch(models.Page.terms, q, models.Document.inlg)
+        return and_(models.Document.inlg == inlg, config.tsearch(models.Page.terms, q, inlg))
+
     res =  DBSession\
         .query(models.Document, func.count(models.Page.pk))\
-        .join(models.Page)\
-        .filter(or_(qinlgtyp(q, qlgs[n]) for (n, q) in qs.items()))\
+        .join(models.Page) \
+        .join(models.DocumentDoctype)\
+        .join(models.Doctype)\
+        .filter(models.Doctype.id.in_(selected_doctypes))\
+        .filter(or_(*[qinlgtyp(term, inlg) for inlg, term in q.items()]))\
         .group_by(models.Document.pk, common.Source.pk)\
         .all()
     for doc, c in res:
@@ -52,17 +68,23 @@ def search(ctx, req, default_doctypes = set(["grammar", "grammar_sketch"]), inlg
             by_lg[lid].append((doc, c))
 
     occs = [sum(c for _, c in l) for l in by_lg.values()]
+    if not occs:
+        return tmpl
+
     min_occs, max_occs = min(occs), max(occs)
     occs = {c: math.log(c) for c in occs}
     min_log_occs = min(occs.values())
     max_log_occs = max(occs.values())
     colors = {
-        o: vir(float(lo - min_log_occs) / (max_log_occs - min_log_occs))
+        o: vir(float(lo - min_log_occs) / (max_log_occs - min_log_occs) if max_log_occs > min_log_occs else 0)
         for o, lo in occs.items()}
 
     langs = {l.id: l for l in DBSession.query(common.Language).filter(common.Language.id.in_(list(by_lg)))}
     #print(len(res))
-    res = {
+
+    #class DoctypeMultiSelect(MultiSelect):
+
+    tmpl.update({
         'map': SearchMap(
             (
                 [langs[lid] for lid in by_lg],
@@ -71,12 +93,10 @@ def search(ctx, req, default_doctypes = set(["grammar", "grammar_sketch"]), inlg
             ),
             req),
         'hits': res,
-        'qs': qs,
-        'qlgs': qlgs,
+        'q': q,
         'by_lg': by_lg,
         'langs': langs,
-        'doctypes': [(dt.id, dt.ndocs, dt.id in selected_doctypes) for dt in doctypes],
-        'inlgs': inlgs
-    }
+        'inlgs': inlgs,
+    })
     print('... done: {}'.format(time.time() - s))
-    return res
+    return tmpl

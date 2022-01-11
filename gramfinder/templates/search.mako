@@ -1,89 +1,57 @@
 <%inherit file="${context.get('request').registry.settings.get('clld.app_template', 'app.mako')}"/>
 <%namespace name="util" file="util.mako"/>
+<%block name="head">
+    <link href="${request.static_url('clld:web/static/css/select2.css')}"
+          rel="stylesheet">
+    <script src="${request.static_url('clld:web/static/js/select2.js')}"></script>
+</%block>
 
-<form class="form-search" action="${req.url}">
-<div class="row-fluid">
+<%def name="sidebar()">
+    <div class="well">
+        <form class="form-horizontal" action="${req.url}">
+            <legend>Search query</legend>
+            % for name, iso in inlgs:
+                <div class="control-group">
+                    <label class="control-label" for="query${iso}">${name}</label>
+                    <div class="controls">
+                        <input type="text" id="query${iso}" name="query-${iso}" placeholder="query" class="search-query"
+                               value="${q.get(iso) or ''}">
+                    </div>
+                </div>
+            % endfor
+            <div class="control-group">
+                <label class="control-label" for="queryany">Any language</label>
+                <div class="controls">
+                    <input type="text" id="queryany" name="query-any" placeholder="query" class="search-query"
+                           value="${q.get('any') or ''}">
+                </div>
+            </div>
 
-<div class="span3">
-<table class="table table-nonfluid">
-    <tbody>
-% for i in range(10):
-    <tr id="query-${i}" style="display: ${'none' if (i > 0 and not qs.get('%s' % i)) else ''}">
-    <td>
-    <select name="${'s_%s' % i}" style="width: 100px;">
-        % for inlgname, inlg in inlgs + [("Any", "ANY")]:
-            <option value="${inlg}" ${'selected' if inlg == qlgs.get('%s' % i) else ''}>${inlgname}</option>
-        % endfor
-    </select>
-    </td>
-    <td>
-    <input name="${'q_%s' % i}" type="text" class="input-medium search-query" value="${qs.get('%s' % i, '')}">
-    </td>
-   <td style="display: ${'none' if i == 9 else ''}">
-        <a onclick="$('#query-${str(i+1)}').toggle()">&plusmn;</a>
-   </td>
-    </tr>
-% endfor
-    </tbody>
-</table>
+            <div class="control-group">
+                <label class="control-label" for="doctypes">Document types</label>
+                <div class="controls">
+                    ${ms.render()|n}
+                    <span class="help-block">Start typing the document type in the field above.</span>
+                </div>
+            </div>
 
-    <button type="submit" class="btn">Search</button>
-</div>
+            <div class="control-group">
+                <div class="controls">
+                    <button type="submit" class="btn">Search</button>
+                </div>
+            </div>
 
-<div class="span3 well well-small">
-<table class="table table-nonfluid">
-    <thead>
-    <tr>
-        <th></th>
-        <th colspan=2>Document types to include</th>
-    </tr>
-    </thead>
-    <tbody>
-        % for (dt, dt_ndocs, dt_check) in doctypes:
-            <tr>
-               <td class="left">
-               <label class="checkbox">
-               <input type="checkbox" name="${dt}" ${'checked' if dt_check else ''}>
-               </label></td>
-               <td class="left">${dt.replace("_", " ")}</td>
-               <td class="right">${dt_ndocs}</td>
-            </tr>
-        % endfor
-    </tbody>
-</table>
+        </form>
+    </div>
+</%def>
 
 
-</div>
-
-
-</form>
-</div>
-
-
-
-<div class="row-fluid">
+    <h2>Search</h2>
 
 % if hits:
     <h3>
-        ${len(by_lg)} languoids with descriptions matching the query:
+        ${len(by_lg)} languoids with matching descriptions
     </h3>
-
-<table class="table table-nonfluid">
-        <thead>
-        <tr>
-% for n, q in qs.items():
-<td>${qlgs[n]}</td>
-% endfor
-        </tr>
-        </thead>
-    <tbody>
-        <tr>
-% for n, q in qs.items():
-<td>${q}</td>
-% endfor
-        </tr>
-    </tbody>
-</table>
 
     ${map.render()|n}
 
@@ -118,7 +86,7 @@
                             % for doc, c in docs:
                                 <li>${h.link(req, doc)}
                                     matches on ${c} pages
-                                    <a onclick="$('#doc-${doc.pk}').load('${req.route_url('source_alt', id=doc.id, ext='snippet.html', _query=dict(q=q))}');">
+                                    <a onclick="$('#doc-${doc.pk}').load('${req.route_url('source_alt', id=doc.id, ext='snippet.html', _query={'query-{}'.format(k): v for k, v in q.items() if k == doc.inlg or k == 'any'})}');">
                                         show</a>
                                     <div id="doc-${doc.pk}"></div>
                                 </li>
@@ -130,5 +98,3 @@
         </tbody>
     </table>
 % endif
-
-</div>

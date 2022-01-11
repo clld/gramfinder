@@ -1,9 +1,10 @@
-from sqlalchemy import func, desc
+from sqlalchemy import func, desc, and_
 from sqlalchemy.orm import joinedload
 from clld.web import datatables
 from clld.web.datatables.source import Sources
 from clld.web.datatables.language import Languages
 from clld.web.datatables.base import LinkCol, Col, LinkToMapCol
+from clld.web.util.htmllib import HTML
 from clld.db.util import get_distinct_values, icontains
 from clld.db.meta import DBSession
 
@@ -11,6 +12,8 @@ from clld_glottologfamily_plugin.models import Family
 from clld_glottologfamily_plugin.datatables import MacroareaCol, FamilyLinkCol
 
 from gramfinder import models
+from gramfinder import config
+
 
 class IsoCol(Col):
     def format(self, item):
@@ -18,11 +21,12 @@ class IsoCol(Col):
             return item.hid
 
     def order(self):
-        return Languoid.hid
+        return models.GramfinderLanguage.hid
 
     def search(self, qs):
-        iso_like = Languoid.hid.op('~')('^[a-z]{3}$')
-        return and_(Languoid.hid.contains(qs.lower()), iso_like)
+        iso_like = models.GramfinderLanguage.hid.op('~')('^[a-z]{3}$')
+        return and_(models.GramfinderLanguage.hid.contains(qs.lower()), iso_like)
+
 
 class DoctypeCol(Col):
     def order(self):
@@ -30,6 +34,20 @@ class DoctypeCol(Col):
 
     def search(self, qs):
         return icontains(models.Document.types, qs)
+
+    def format(self, item):
+        return HTML.ul(*[HTML.li(t) for t in item.types.split()], class_='unstyled')
+
+
+class InlgCol(Col):
+    def order(self):
+        return models.Document.inlg
+
+    def search(self, qs):
+        return models.Document.inlg == qs
+
+    def format(self, item):
+        return config.INLGS.get(item.inlg, item.inlg)
 
 
 class Documents(Sources):
@@ -39,7 +57,7 @@ class Documents(Sources):
     def col_defs(self):
         return [
             LinkCol(self, 'src'),
-            Col(self, 'inlg', model_col=models.Document.inlg, choices=get_distinct_values(models.Document.inlg)),
+            InlgCol(self, 'inlg', model_col=models.Document.inlg, choices=config.inlgs().items()),
             Col(self, 'npages', model_col=models.Document.npages),
             Col(self, 'nlangs', model_col=models.Document.nlangs),
             DoctypeCol(
@@ -49,10 +67,12 @@ class Documents(Sources):
                 choices=[dt.name for dt in DBSession.query(models.Doctype).order_by(desc(models.Doctype.rank))]),
         ]
 
+
 class LanguageIdCol(LinkCol):
     def get_attrs(self, item):
         return dict(label=item.id)
-    
+
+
 class GramfinderLanguages(Languages):
     __constraints__ = [Family]
 
@@ -65,6 +85,7 @@ class GramfinderLanguages(Languages):
         return [
             LanguageIdCol(self, 'id'),
             LinkCol(self, 'name'),
+            IsoCol(self, 'ISO'),
             LinkToMapCol(self, 'm'),
             Col(self,
                 'latitude',

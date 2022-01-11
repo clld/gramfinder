@@ -25,29 +25,38 @@ from clld_glottologfamily_plugin.models import HasFamilyMixin
 
 @implementer(interfaces.ISource)
 class Document(CustomModelMixin, common.Source):
-    """Words are units of a particular language, but are still considered part of a
-    dictionary, i.e. part of a contribution.
-    """
     pk = Column(Integer, ForeignKey('source.pk'), primary_key=True)
-    nlangs = Column(Integer)
     langs = Column(Unicode)
+    nlangs = Column(Integer)
     inlg = Column(Unicode)
     npages = Column(Integer)
+    besttxt = Column(Unicode)
     types = Column(Unicode)
     maxrank = Column(Integer)
-    besttxt = Column(Unicode)
+
+    @property
+    def maxtype(self):
+        for dta in self.doctype_assocs:
+            if dta.doctype.rank == self.maxrank:
+                return dta.doctype
 
 
 @implementer(interfaces.ILanguage)
 class GramfinderLanguage(CustomModelMixin, common.Language, HasFamilyMixin):
     pk = Column(Integer, ForeignKey('language.pk'), primary_key=True)
     macroarea = Column(Unicode)
-    nsources = Column(Integer) #Ugly, since it's derivable form the DB but I don't know how to make SQL views in this system
-    hid = Column(Unicode, unique=True) 
-    
+    hid = Column(Unicode, unique=True)
+    nsources = Column(Integer)
+
+    @property
+    def sorted_sources(self):
+        return sorted(self.sources, key=lambda src: (-src.maxrank, -src.npages))
+
+
 class Doctype(Base, common.IdNameDescriptionMixin):
     rank = Column(Integer)
-    ndocs = Column(Integer) #Ugly, since it's derivable form the DB but I don't know how to make SQL views in this system
+    ndocs = Column(Integer)
+
 
 class DocumentDoctype(Base):
     __table_args__ = (UniqueConstraint('document_pk', 'doctype_pk'),)

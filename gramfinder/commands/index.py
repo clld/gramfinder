@@ -1,7 +1,5 @@
 """
 """
-import collections
-
 import transaction
 from sqlalchemy import or_, func, not_
 from clld.db.meta import DBSession
@@ -11,31 +9,7 @@ from tqdm import tqdm
 from unidecode import unidecode
 
 from gramfinder import models
-
-STEM = collections.OrderedDict([
-    ('eng', 'english'),
-    ('fra', 'french'),
-    ('deu', 'german'),
-    ('arb', 'arabic'),
-    ('dan', 'danish'),
-    ('nld', 'dutch'),
-    ('ind', 'indonesian'),
-    ('ita', 'italian'),
-    #'pes': '',  # No Persian stemmer available
-    ('rus', 'russian'),
-    ('spa', 'spanish'),
-    ('swe', 'swedish'),
-    ('tur', 'turkish'),
-])
-
-
-def tsvector(text, lg):  # pragma: no cover
-    for code, name in STEM.items():
-        if '[{}]'.format(code) in lg:
-            break
-    else:
-        name = 'english'
-    return func.to_tsvector(name, text)
+from gramfinder.config import stemmer
 
 
 def get_text(p):
@@ -66,7 +40,7 @@ def index(dpk, besttxt, inlg):
             number=i,
             document_pk=dpk,
             text=t,
-            terms=tsvector(t, inlg)))
+            terms=func.to_tsvector(stemmer(inlg), t)))
     models.Document.get(dpk).npages = i
 
 

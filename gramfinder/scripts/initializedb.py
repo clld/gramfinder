@@ -1,67 +1,41 @@
-import re
 import pathlib
 import itertools
-import collections
 
+from sqlalchemy.orm import joinedload
 import tqdm
-from pycldf import Sources, Source
-from clldutils.misc import nfilter
-from clldutils.color import qualitative_colors
 from clld.cliutil import Data, bibtex2source
 from clld.db.meta import DBSession
 from clld.db.models import common
 from clld.lib import bibtex
 from clld.db import fts
-from pybtex.database import parse_string
 from unidecode import unidecode
-from pyglottolog.references import BibFile
 from pyglottolog import Glottolog
+from clld_glottologfamily_plugin.util import load_families
 
 import gramfinder
+from gramfinder.config import INLGS
 from gramfinder import models
-from sqlalchemy import func, Index
 
 DATA = pathlib.Path(__file__).parent.parent.parent.parent.joinpath("dbs\\") if pathlib.Path(__file__).parent.parent.parent.parent.joinpath("dbs").exists() else pathlib.Path(__file__).parent.parent.parent.parent.joinpath("more")
-INDEX = 'gramfinder'
-
-STEM = {
-    'arb': 'arabic',
-    'dan': 'danish',
-    'nld': 'dutch',
-    'fra': 'french',
-    'deu': 'german',
-    'ind': 'indonesian',
-    'ita': 'italian',
-    #'pes': '',  # No Persian stemmer available
-    'rus': 'russian',
-    'spa': 'spanish',
-    'swe': 'swedish',
-    'tur': 'turkish',
-}
-
-#def tsvector(text, lg):  # pragma: no cover
-#    for code, name in STEM.items():
-#        if '[{}]'.format(code) in lg:
-#            break
-#    else:
-#        name = 'english'
-#    return func.to_tsvector(name, text)
 
 
-def get_text(p):
-    try:
-       res = p.read_text(encoding='utf-8')
-    except UnicodeDecodeError:
-        try:
-            res = p.read_text(encoding='cp1252')
-        except UnicodeDecodeError:
-            res = p.read_text(encoding='latin1')
-    res = unidecode(res)
-    return res.replace("\x00", "")
-
+def get_inlg(s):
+    for k in INLGS:
+        if '[{}]'.format(k) in s:
+            return k
+    return None
 
 
 def main(args):
+    global DATA
+
+    datadir = input('Data [{}]: '.format(str(DATA)))
+    if datadir:
+        DATA = pathlib.Path(datadir)
+
+    maxdocs = input('Max number of bib records with texts to load [1000]: ')
+    maxdocs = int(maxdocs or 1000)
+
     assert DATA.exists(), str(DATA)
 
     fts.index('fts_index', models.Page.terms, DBSession.bind)
@@ -89,8 +63,14 @@ def main(args):
     #bib = BibFile(DATA.joinpath('hh10000.bib'))
     dt_by_id = {ht.id: ht for ht in gl.hhtypes}
     htndocs = {}
-    for e in tqdm.tqdm(itertools.filterfalse(
-            lambda i: not i.fields.get('besttxt'), bib.iterentries())):
+    recs = []
+    for n, e in enumerate(tqdm.tqdm(itertools.filterfalse(
+            lambda i: not i.fields.get('besttxt'), bib.iterentries()), desc='reading hh.bib')):
+        if n >= maxdocs:
+            break
+        recs.append(e)
+
+    for e in recs:
         for ht in e.doctypes(dt_by_id)[0]:
             htndocs[ht.id] = htndocs.get(ht.id, 0) + 1
  
@@ -99,61 +79,64 @@ def main(args):
             data.add(
                 models.Doctype, ht.id, id=ht.id, name=ht.name, description=ht.description, rank=ht.rank, ndocs = htndocs[ht.id])
 
-    
     langs_by_id = gl.languoids_by_code()
 
     ndocs = 0
-    for e in tqdm.tqdm(itertools.filterfalse(
-            lambda i: not i.fields.get('besttxt'), bib.iterentries())):
+    for e in recs:
         ndocs += 1
-        if ndocs > 1000:
-            break        
         besttxt = DATA.joinpath(*e.fields['besttxt'].split('\\'))
         #assert besttxt.exists(), str(besttxt)
         
         rec = bibtex.Record(e.type, e.key, **e.fields)
-        src = data.add(models.Document, e.key, _obj=bibtex2source(rec, cls=models.Document))
-        inlgcs = re.findall("\[([a-z]{3}|NOCODE\_[A-Z][^\s\]]+)\]", e.fields.get('inlg', ''))
-        src.inlg = inlgcs[0] if inlgcs else None
+        obj = bibtex2source(rec, cls=models.Document)
+        obj.id = unidecode(e.key).replace(':', '_').replace('-', '_')
+        src = data.add(models.Document, e.key, _obj=obj)
+        src.inlg = get_inlg(e.fields.get('inlg') or '')
+        src.besttxt = '/'.join(e.fields['besttxt'].split('\\')) if besttxt.exists() else None
+        if not src.besttxt:
+            print(e.fields['besttxt'])
 
-        i = 0
-        for i, t in enumerate(get_text(besttxt).split('\f'), start=1):
-            DBSession.add(models.Page(
-                number=i,
-                document=src,
-                text=t,
-                terms=func.to_tsvector(STEM.get(src.inlg, "english"), t))) #tsvector(t, e.fields.get('inlg') or '')))
-        src.npages = i
-         
         #
         # indexing!
         #
-        nsources = {}
 
         langs, _ = e.languoids(langs_by_id)
-        #TODO filter out non-language languoids
+        langs = [l for l in langs if l.level.name == 'language']
         src.nlangs = len(langs)
         src.langs = ' '.join({l.id for l in langs})
         for l in langs:
             if l.id not in data['GramfinderLanguage']:
                 data.add(
                     models.GramfinderLanguage, l.id,
-                    id=l.id, hid = l.hid, name=l.name, latitude=l.latitude, longitude=l.longitude, nsources=nsources.get(l.id, 0))
-
-        types = []
+                    id=l.id,
+                    hid=l.hid,
+                    name=l.name,
+                    latitude=l.latitude,
+                    longitude=l.longitude,
+               )
         for ht in e.doctypes(dt_by_id)[0]:
-            types.append((ht.name, ht.rank))
             DBSession.add(models.DocumentDoctype(document=src, doctype=data['Doctype'][ht.id]))
-        src.types = ';'.join([i[0] for i in types])
-        src.maxrank = max([i[1] for i in types])
 
-        
+    load_families(data, data['GramfinderLanguage'].values(), glottolog_repos=gl.repos)
+
+
 def prime_cache(args):
-    """If data needs to be denormalized for lookup, do that here.
-    This procedure should be separate from the db initialization, because
-    it will have to be run periodically whenever data has been updated.
-    """
     langs = dict(DBSession.query(models.GramfinderLanguage.id, models.GramfinderLanguage.pk))
-    for doc in DBSession.query(models.Document):
+    for doc in DBSession.query(models.Document)\
+            .options(
+                joinedload(models.Document.doctype_assocs)
+                .joinedload(models.DocumentDoctype.doctype)):
         for lid in doc.langs.split():
             DBSession.add(common.LanguageSource(source_pk=doc.pk, language_pk=langs[lid]))
+        types = sorted([dta.doctype for dta in doc.doctype_assocs], key=lambda dt: -dt.rank)
+        if types:
+            doc.maxrank = types[0].rank
+            doc.types = ' '.join(dt.id for dt in types)
+
+    for lang in DBSession.query(models.GramfinderLanguage)\
+            .options(joinedload(models.GramfinderLanguage.sources)):
+        lang.nsources = len(lang.sources)
+
+    for dt in DBSession.query(models.Doctype)\
+            .options(joinedload(models.Doctype.document_assocs)):
+        dt.ndocs = len(dt.document_assocs)

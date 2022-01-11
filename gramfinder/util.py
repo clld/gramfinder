@@ -1,11 +1,14 @@
-from sqlalchemy import func
+import collections
+
+from sqlalchemy import func, or_
 from clld.db.meta import DBSession
 from clld.db.models import common
 from clld.web.util.htmllib import HTML
+from clld.web.util.helpers import get_referents
 import attr
 
 from gramfinder import models
-from gramfinder.views import search_col
+from gramfinder import config
 
 
 @attr.s
@@ -34,17 +37,26 @@ class FragmentOptions:
 
 def iter_fragments(document, req):
     options = FragmentOptions()
-    for p, f in DBSession \
-            .query(
-            models.Page,
-            func.ts_headline(
-                'english',
-                models.Page.text,
-                func.websearch_to_tsquery('english', req.params.get('q')),
-                str(options))) \
-            .filter(models.Page.document_pk == document.pk) \
-            .filter(search_col(models.Page.terms, req.params.get('q'))):
-        yield p, options.format(f)
+
+    for inlg in [document.inlg, 'any']:
+        q = req.params.get('query-{}'.format(inlg))
+        if not q:
+            continue
+        for p, f in DBSession \
+                .query(
+                models.Page,
+                func.ts_headline(
+                    config.stemmer(inlg),
+                    models.Page.text,
+                    func.websearch_to_tsquery(config.stemmer(inlg), q),
+                    str(options))) \
+                .filter(models.Page.document_pk == document.pk) \
+                .filter(config.tsearch(models.Page.terms, q, inlg)):
+            yield p, options.format(f)
+
+
+def source_detail_html(context=None, request=None, **kw):
+    return {'referents': get_referents(context)}
 
 
 def source_snippet_html(request=None, context=None, **kw):
