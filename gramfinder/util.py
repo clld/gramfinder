@@ -1,3 +1,4 @@
+import itertools
 import collections
 
 from sqlalchemy import func, or_
@@ -27,32 +28,62 @@ class FragmentOptions:
     def __str__(self):
         return ', '.join(['{}={}'.format(k, v) for k, v in attr.asdict(self).items()])
 
-    def format(self, f):
-        return HTML.ul(
-            *[HTML.li(HTML.literal(ss.replace(self.StartSel, '<span style="background: yellow">')
-                                   .replace(self.StopSel, '</span>')))
-              for ss in f.split(self.FragmentDelimiter)]
-        )
+    def parse(self, f):
+        return [
+            ss.replace(
+                self.StartSel, '<span style="background: yellow">').replace(
+                self.StopSel, '</span>')
+            for ss in f.split(self.FragmentDelimiter) if self.StartSel in ss]
 
 
-def iter_fragments(document, req):
-    options = FragmentOptions()
 
-    for inlg in [document.inlg, 'any']:
-        q = req.params.get('query-{}'.format(inlg))
+def iter_fragments(document, req, q=None, inlgs=None, options=None):
+    options = options or FragmentOptions()
+
+    for inlg in inlgs or [document.inlg, 'any']:
+        q = q or req.params.get('query-{}'.format(inlg))
         if not q:
             continue
-        for p, f in DBSession \
+        for pid, fs in itertools.groupby(
+                DBSession\
                 .query(
-                models.Page,
-                func.ts_headline(
-                    config.stemmer(inlg),
-                    models.Page.text,
-                    func.websearch_to_tsquery(config.stemmer(inlg), q),
-                    str(options))) \
+                    models.Page,
+                    func.ts_headline(
+                        config.stemmer(inlg),
+                        models.Page.text,
+                        func.websearch_to_tsquery(config.stemmer(inlg), q),
+                        str(options))) \
                 .filter(models.Page.document_pk == document.pk) \
-                .filter(config.tsearch(models.Page.terms, q, inlg)):
-            yield p, options.format(f)
+                .filter(config.tsearch(models.Page.terms, q, inlg))\
+                .order_by(models.Page.document_pk, models.Page.number),
+                lambda i: i[0].number,
+            ):
+            p, frags = None, []
+            for p, f in fs:
+                for ff in options.parse(f):
+                    if ff not in frags:
+                        frags.append(ff)
+            yield p, frags
+
+
+def language_detail_html(context=None, request=None, **kw):
+    hits = []
+    for k, v in request.params.items():
+        if k.startswith('query-') and v.strip():
+            doc = models.Document.get(int(k.partition('-')[2]))
+            hits.append((
+                doc,
+                sorted(
+                    list(iter_fragments(
+                        doc,
+                        request,
+                        q=v.strip(),
+                        inlgs=[doc.inlg or 'any'],
+                        options=FragmentOptions(MaxFragments=100, MaxWords=20, MinWords=5),
+                    )),
+                    key=lambda i: i[0].number)
+            ))
+    return {'hits': hits}
 
 
 def source_detail_html(context=None, request=None, **kw):
@@ -60,4 +91,6 @@ def source_detail_html(context=None, request=None, **kw):
 
 
 def source_snippet_html(request=None, context=None, **kw):
-    return {'pages': list(iter_fragments(context, request))}
+    return {
+        'pages': [
+            (p, HTML.ul(*[HTML.li(HTML.literal(f)) for f in fs])) for p, fs in iter_fragments(context, request)]}

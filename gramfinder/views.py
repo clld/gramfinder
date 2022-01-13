@@ -1,18 +1,12 @@
 import math
 import time
-import itertools
 import collections
 
 from sqlalchemy import func, or_, and_, desc
-from unidecode import unidecode
-from clld.db import fts
 from clld.db.meta import DBSession
 from clld.db.models import common
 from matplotlib.cm import viridis
 from matplotlib.colors import to_hex
-from clldutils.svg import icon, data_url
-from clld.db.util import icontains
-from clld.web.util.multiselect import MultiSelect
 
 from gramfinder import models
 from gramfinder.maps import SearchMap
@@ -26,19 +20,20 @@ def vir(n):
 
 def search(ctx, req):
     doctypes = DBSession.query(models.Doctype).order_by(desc(models.Doctype.rank))
-    inlgs = [(v.capitalize(), k) for k, v in config.inlgs().items()]
-    selected_doctypes = req.params.getall('doctypes') or ["grammar", "grammar_sketch"]
+    inlgs = config.inlgs(with_counts=True)
+    cutoff = 100 if inlgs['any'][1] > 1000 else 10
+    inlgs = [(k, v[0].capitalize(), v[1]) for k, v in inlgs.items() if v[1] > cutoff]
+    inlgs = sorted(inlgs, key=lambda i: -i[2] if i[0] != 'any' else 0)
+    selected_doctypes = {t.partition('-')[2] for t in req.params if t.startswith('dt-')} \
+                        or ["grammar", "grammar_sketch"]
+
+    print(req.params)
 
     tmpl = {
         'hits': [],
         'q': {},
         'inlgs': inlgs,
-        'ms': MultiSelect(
-            req,
-            'doctypes',
-            'doctypes',
-            collection=doctypes,
-            selected=[dt for dt in doctypes if dt.id in (selected_doctypes)])
+        'doctypes': [(dt, dt.id in selected_doctypes) for dt in doctypes],
     }
 
     s = time.time()
@@ -82,8 +77,6 @@ def search(ctx, req):
     langs = {l.id: l for l in DBSession.query(common.Language).filter(common.Language.id.in_(list(by_lg)))}
     #print(len(res))
 
-    #class DoctypeMultiSelect(MultiSelect):
-
     tmpl.update({
         'map': SearchMap(
             (
@@ -96,7 +89,6 @@ def search(ctx, req):
         'q': q,
         'by_lg': by_lg,
         'langs': langs,
-        'inlgs': inlgs,
     })
     print('... done: {}'.format(time.time() - s))
     return tmpl

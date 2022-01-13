@@ -1,7 +1,7 @@
 <%inherit file="../snippet.mako"/>
 
 <ul>
-    % for p, f in u.iter_fragments(ctx, req):
+    % for p, f in pages:
         <li>
             page ${p.number}
             ${f|n}
