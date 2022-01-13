@@ -96,6 +96,9 @@ def main(args):
         src.besttxt = '/'.join(e.fields['besttxt'].split('\\')) if besttxt.exists() else None
         if not src.besttxt:
             print(e.fields['besttxt'])
+        #
+        # FIXME: also store the matching fn!
+        #
 
         #
         # indexing!

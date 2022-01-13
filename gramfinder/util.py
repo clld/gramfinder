@@ -79,7 +79,7 @@ def language_detail_html(context=None, request=None, **kw):
                         request,
                         q=v.strip(),
                         inlgs=[doc.inlg or 'any'],
-                        options=FragmentOptions(MaxFragments=100, MaxWords=20, MinWords=5),
+                        options=FragmentOptions(MaxFragments=20, MaxWords=20, MinWords=5),
                     )),
                     key=lambda i: i[0].number)
             ))
