@@ -11,6 +11,7 @@ from clld.db import fts
 from unidecode import unidecode
 from pyglottolog import Glottolog
 from clld_glottologfamily_plugin.util import load_families
+from clldutils.jsonlib import load
 
 import gramfinder
 from gramfinder.config import INLGS
@@ -86,7 +87,7 @@ def main(args):
         ndocs += 1
         besttxt = DATA.joinpath(*e.fields['besttxt'].split('\\'))
         #assert besttxt.exists(), str(besttxt)
-        
+
         rec = bibtex.Record(e.type, e.key, **e.fields)
         obj = bibtex2source(rec, cls=models.Document)
         obj.id = unidecode(e.key).replace(':', '_').replace('-', '_')
@@ -121,6 +122,13 @@ def main(args):
 
 
 def prime_cache(args):
+    m = load(input('fn.json: '))
+    i = 0
+    for doc in DBSession.query(models.Document):
+        if doc.besttxt in m:
+            i += 1
+            doc.update_jsondata(fn=m[doc.besttxt])
+    return
     langs = dict(DBSession.query(models.GramfinderLanguage.id, models.GramfinderLanguage.pk))
     for doc in DBSession.query(models.Document)\
             .options(
