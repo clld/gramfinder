@@ -13,7 +13,6 @@ from gramfinder.maps import SearchMap
 from gramfinder import config
 
 
-
 def vir(n):
     return to_hex(viridis(float(n)))
 
@@ -26,9 +25,6 @@ def search(ctx, req):
     inlgs = sorted(inlgs, key=lambda i: -i[2] if i[0] != 'any' else 0)
     selected_doctypes = {t.partition('-')[2] for t in req.params if t.startswith('dt-')} \
                         or ["grammar", "grammar_sketch"]
-
-    print(req.params)
-
     tmpl = {
         'hits': [],
         'q': {},

@@ -8,16 +8,18 @@
 
 <div class="row-fluid">
     % if hits:
-        <button type="button" class="btn" data-toggle="collapse" data-target="#query">
-            Show query
-        </button>
+        <p>
+            <button type="button" class="btn" data-toggle="collapse" data-target="#query">
+                Show query
+            </button>
+        </p>
     % endif
     <div id="query" class="collapse ${'' if hits else 'in'}">
 
     <form action="${req.url}">
         <div class="span2">
             --- Help ---
-            <button type="submit" class="btn">Search</button>
+            <button type="submit" class="btn btn-primary">Search</button>
         </div>
         <div class="span6">
             <legend>Search query</legend>
