@@ -122,13 +122,13 @@ def main(args):
 
 
 def prime_cache(args):
-    m = load(input('fn.json: '))
-    i = 0
-    for doc in DBSession.query(models.Document):
-        if doc.besttxt in m:
-            i += 1
-            doc.update_jsondata(fn=m[doc.besttxt])
-    return
+    #m = load(input('fn.json: '))
+    #i = 0
+    #for doc in DBSession.query(models.Document):
+    #    if doc.besttxt in m:
+    #        i += 1
+    #        doc.update_jsondata(fn=m[doc.besttxt])
+    #return
     langs = dict(DBSession.query(models.GramfinderLanguage.id, models.GramfinderLanguage.pk))
     for doc in DBSession.query(models.Document)\
             .options(

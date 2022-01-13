@@ -62,7 +62,12 @@
                         <tbody>
                             % for p, fs in pages:
                                 <tr>
-                                    <td>${p.number}</td>
+                                    <td>
+                                        ${p.number}
+                                        % if 'fn' in doc.jsondatadict:
+                                            <a href="${doc.jsondata['fn']}#${p.number}">[PDF]</a>
+                                        % endif
+                                    </td>
                                     <td>
                                         <ul class="unstyled">
                                         % for f in fs:
