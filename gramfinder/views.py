@@ -3,6 +3,7 @@ import time
 import collections
 
 from sqlalchemy import func, or_, and_, desc
+from sqlalchemy.orm import joinedload
 from clld.db.meta import DBSession
 from clld.db.models import common
 from matplotlib.cm import viridis
@@ -18,17 +19,17 @@ def vir(n):
 
 
 def search(ctx, req):
-    doctypes = DBSession.query(models.Doctype).order_by(desc(models.Doctype.rank))
-    inlgs = config.inlgs(with_counts=True)
-    cutoff = 100 if inlgs['any'][1] > 1000 else 10
-    inlgs = [(k, v[0].capitalize(), v[1]) for k, v in inlgs.items() if v[1] > cutoff]
-    inlgs = sorted(inlgs, key=lambda i: -i[2] if i[0] != 'any' else 0)
+    doctypes = DBSession.query(models.Doctype).order_by(desc(models.Doctype.rank)).all()
+    inlgs = {r.id: r for r in DBSession.query(models.Inlg)}
+    ndocs = DBSession.query(models.Document).count()
+    cutoff = 400 if ndocs > 1000 else 10
     selected_doctypes = {t.partition('-')[2] for t in req.params if t.startswith('dt-')} \
                         or ["grammar", "grammar_sketch"]
     tmpl = {
         'hits': [],
         'q': {},
-        'inlgs': inlgs,
+        'inlgs': sorted([(r.id, r.description, r.ndocs) for r in inlgs.values() if r.ndocs > cutoff], key=lambda i: -i[2]) + [('any', 'All', ndocs)],
+        'inlg_map': inlgs,
         'doctypes': [(dt, dt.id in selected_doctypes) for dt in doctypes],
     }
 
@@ -42,15 +43,16 @@ def search(ctx, req):
 
     def qinlgtyp(q, inlg):
         if inlg == 'any':
-            return config.tsearch(models.Page.terms, q, models.Document.inlg)
-        return and_(models.Document.inlg == inlg, config.tsearch(models.Page.terms, q, inlg))
+            return config.tsearch(models.Page.terms, q, 'simple')
+        return and_(models.Document.inlg_pk == inlgs[inlg].pk, config.tsearch(models.Page.terms, q, inlg))
 
+    dt_id2pk = {dt.id: dt.pk for dt in doctypes}
+    selected_doctypes = set(dt_id2pk[dt] for dt in selected_doctypes)
     res =  DBSession\
         .query(models.Document, func.count(models.Page.pk))\
         .join(models.Page) \
         .join(models.DocumentDoctype)\
-        .join(models.Doctype)\
-        .filter(models.Doctype.id.in_(selected_doctypes))\
+        .filter(models.DocumentDoctype.doctype_pk.in_(selected_doctypes))\
         .filter(or_(*[qinlgtyp(term, inlg) for inlg, term in q.items()]))\
         .group_by(models.Document.pk, common.Source.pk)\
         .all()
@@ -70,7 +72,9 @@ def search(ctx, req):
         o: vir(float(lo - min_log_occs) / (max_log_occs - min_log_occs) if max_log_occs > min_log_occs else 0)
         for o, lo in occs.items()}
 
-    langs = {l.id: l for l in DBSession.query(common.Language).filter(common.Language.id.in_(list(by_lg)))}
+    langs = {l.id: l for l in DBSession.query(common.Language)\
+        .options(joinedload(models.GramfinderLanguage.family))\
+        .filter(common.Language.id.in_(list(by_lg)))}
     #print(len(res))
 
     tmpl.update({

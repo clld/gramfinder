@@ -64,8 +64,8 @@
                                 <tr>
                                     <td>
                                         ${p.number}
-                                        % if 'fn' in doc.jsondatadict:
-                                            <a href="${doc.jsondata['fn'].split(',')[0].strip()}#page=${p.number}">[PDF]</a>
+                                        % if doc.fn:
+                                            <a href="${doc.fn}#page=${p.number}">[PDF]</a>
                                         % endif
                                     </td>
                                     <td>

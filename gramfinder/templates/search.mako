@@ -83,9 +83,9 @@
                                 % for doc, c in docs:
                                     <li>${h.link(req, doc)}
                                         matches on ${c} pages
-                                        <a onclick="$('#doc-${doc.pk}').load('${req.route_url('source_alt', id=doc.id, ext='snippet.html', _query={'query-{}'.format(k): v for k, v in q.items() if k == doc.inlg or k == 'any'})}');">
+                                        <a onclick="$('#doc-${doc.pk}-${lid}').load('${req.route_url('source_alt', id=doc.id, ext='snippet.html', _query={'query-{}'.format(k): v for k, v in q.items() if (k in inlg_map and inlg_map[k].pk == doc.inlg_pk) or k == 'any'})}');">
                                             show</a>
-                                        <div id="doc-${doc.pk}"></div>
+                                        <div id="doc-${doc.pk}-${lid}"></div>
                                     </li>
                                 % endfor
                             </ul>

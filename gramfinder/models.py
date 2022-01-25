@@ -23,14 +23,20 @@ from clld_glottologfamily_plugin.models import HasFamilyMixin
 #-----------------------------------------------------------------------------
 
 
+class Inlg(Base, common.IdNameDescriptionMixin):
+    ndocs = Column(Integer)
+
+
 @implementer(interfaces.ISource)
 class Document(CustomModelMixin, common.Source):
     pk = Column(Integer, ForeignKey('source.pk'), primary_key=True)
     langs = Column(Unicode)
     nlangs = Column(Integer)
-    inlg = Column(Unicode)
+    inlg_pk = Column(Integer, ForeignKey('inlg.pk'), index=True)
+    inlg = relationship(Inlg)
     npages = Column(Integer)
     besttxt = Column(Unicode)
+    fn = Column(Unicode)
     types = Column(Unicode)
     maxrank = Column(Integer)
 
@@ -62,7 +68,7 @@ class DocumentDoctype(Base):
     __table_args__ = (UniqueConstraint('document_pk', 'doctype_pk'),)
 
     document_pk = Column(Integer, ForeignKey('document.pk'), nullable=False)
-    doctype_pk = Column(Integer, ForeignKey('doctype.pk'), nullable=False)
+    doctype_pk = Column(Integer, ForeignKey('doctype.pk'), nullable=False, index=True)
     document = relationship(Document, backref='doctype_assocs')
     doctype = relationship(Doctype, backref='document_assocs')
 
@@ -72,5 +78,5 @@ class Page(Base):
     label = Column(Unicode)
     text = Column(Unicode)
     terms = Column(TSVECTOR)
-    document_pk = Column(Integer, ForeignKey('source.pk'))
+    document_pk = Column(Integer, ForeignKey('document.pk'), index=True)
     document = relationship(Document, backref='scans')

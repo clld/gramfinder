@@ -41,23 +41,26 @@ class DoctypeCol(Col):
 
 class InlgCol(Col):
     def order(self):
-        return models.Document.inlg
+        return models.Document.inlg_pk
 
     def search(self, qs):
-        return models.Document.inlg == qs
+        return models.Inlg.id == qs
 
     def format(self, item):
-        return config.INLGS.get(item.inlg, item.inlg)
+        return config.INLGS.get(item.inlg.id, item.inlg.id)
 
 
 class Documents(Sources):
     def base_query(self, query):
-        return query.outerjoin(models.DocumentDoctype).outerjoin(models.Doctype).distinct()
+        return query.join(models.Document.inlg)\
+            .outerjoin(models.DocumentDoctype).outerjoin(models.Doctype).distinct()\
+            .options(joinedload(models.Document.inlg))
 
     def col_defs(self):
         return [
             LinkCol(self, 'src'),
-            InlgCol(self, 'inlg', model_col=models.Document.inlg, choices=config.inlgs().items()),
+            Col(self, 'description', sTitle='title'),
+            InlgCol(self, 'inlg', choices=config.inlgs().items()),
             Col(self, 'npages', model_col=models.Document.npages),
             Col(self, 'nlangs', model_col=models.Document.nlangs),
             DoctypeCol(

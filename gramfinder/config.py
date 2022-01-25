@@ -27,18 +27,10 @@ INLGS = collections.OrderedDict([
 STEM = {'chinese': 'simple'}  # No Chinese stemmer available
 
 
-def inlgs(with_counts=False):
-    if with_counts:
-        res = dict(DBSession.query(func.coalesce(models.Document.inlg, 'any'), func.count(models.Document.pk))
-                   .group_by(func.coalesce(models.Document.inlg, 'any')))
-        ndocs = sum(res.values())
-        res = collections.OrderedDict([(k, (v, res[k])) for k, v in INLGS.items() if k in res])
-        res['any'] = ('all', ndocs)
-        return res
-
+def inlgs():
     return collections.OrderedDict([
         (k, v) for k, v in INLGS.items()
-        if k in set(r[0] for r in DBSession.query(models.Document.inlg).distinct())])
+        if k in set(r[0] for r in DBSession.query(models.Inlg.id).distinct())])
 
 
 def stemmer(lg):

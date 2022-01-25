@@ -1,6 +1,7 @@
 import pathlib
 import itertools
 
+from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 import tqdm
 from clld.cliutil import Data, bibtex2source
@@ -82,6 +83,9 @@ def main(args):
 
     langs_by_id = gl.languoids_by_code()
 
+    for id, name in INLGS.items():
+        data.add(models.Inlg, id, id=id, name=name, description=name.capitalize())
+
     ndocs = 0
     for e in recs:
         ndocs += 1
@@ -92,13 +96,20 @@ def main(args):
         obj = bibtex2source(rec, cls=models.Document)
         obj.id = unidecode(e.key).replace(':', '_').replace('-', '_')
         src = data.add(models.Document, e.key, _obj=obj)
-        src.inlg = get_inlg(e.fields.get('inlg') or '')
+
+        inlg = get_inlg(e.fields.get('inlg') or '')
+        if inlg:
+            src.inlg = data['Inlg'][inlg]
+
         src.besttxt = '/'.join(e.fields['besttxt'].split('\\')) if besttxt.exists() else None
         if not src.besttxt:
             print(e.fields['besttxt'])
-        #
-        # FIXME: also store the matching fn!
-        #
+        if e.fields.get('fn'):
+            for fn in e.fields['fn'].split(','):
+                fn = fn.strip()
+                if e.fields['besttxt'].replace('txt', 'pdf').split('\\')[-1] == fn.split('\\')[-1]:
+                    src.fn = 'https://130.60.24.118/gramfinder/p/' + '/'.join(fn.split('\\'))
+                    break
 
         #
         # indexing!
@@ -132,6 +143,12 @@ def prime_cache(args):
     #        i += 1
     #        doc.update_jsondata(fn=m[doc.besttxt])
     #return
+
+    for inlg, c in DBSession.query(models.Inlg, func.count(models.Document.pk))\
+            .join(models.Document, models.Document.inlg_pk == models.Inlg.pk)\
+            .group_by(models.Inlg.pk):
+        inlg.ndocs = c
+
     langs = dict(DBSession.query(models.GramfinderLanguage.id, models.GramfinderLanguage.pk))
     for doc in DBSession.query(models.Document)\
             .options(

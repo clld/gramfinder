@@ -2,6 +2,7 @@
 """
 import transaction
 from sqlalchemy import or_, func, not_
+from sqlalchemy.orm import joinedload
 from clld.db.meta import DBSession
 from clld.cliutil import AppConfig, SessionContext
 from clldutils.clilib import PathType
@@ -10,6 +11,8 @@ from unidecode import unidecode
 
 from gramfinder import models
 from gramfinder.config import stemmer
+
+DOCS_PER_TRANSACTION = 30
 
 
 def get_text(p):
@@ -30,6 +33,7 @@ def register(parser):
         'data_dir',
         help="",
         type=PathType(type='dir'))
+    parser.add_argument('--docs-per-transaction', type=int, default=DOCS_PER_TRANSACTION)
     parser.add_argument('--max-docs', type=int, default=None)
 
 
@@ -49,9 +53,12 @@ def run(args):  # pragma: no cover
     with SessionContext(args.settings):
         with transaction.manager:
             with_pages = set(r[0] for r in DBSession.query(models.Page.document_pk).distinct())
-            docs = [(d.pk, d.besttxt, d.inlg) for d in DBSession.query(models.Document).filter(not_(models.Document.pk.in_(with_pages)))]
+            docs = [(d.pk, d.besttxt, d.inlg.id if d.inlg else None) for d in
+                    DBSession.query(models.Document)
+                    .filter(not_(models.Document.pk.in_(with_pages)))
+                    .options(joinedload(models.Document.inlg))]
 
-        chunks = [docs[i:i + 10] for i in range(0, len(docs), 10)]
+        chunks = [docs[i:i + args.docs_per_transaction] for i in range(0, len(docs), args.docs_per_transaction)]
         for chunk in tqdm(chunks, total=len(chunks)):
             with transaction.manager:
                 for dpk, txt, inlg in chunk:

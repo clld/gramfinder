@@ -1,7 +1,7 @@
 import itertools
 import collections
 
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, and_
 from clld.db.meta import DBSession
 from clld.db.models import common
 from clld.web.util.htmllib import HTML
@@ -36,11 +36,10 @@ class FragmentOptions:
             for ss in f.split(self.FragmentDelimiter) if self.StartSel in ss]
 
 
-
 def iter_fragments(document, req, q=None, inlgs=None, options=None):
     options = options or FragmentOptions()
 
-    for inlg in inlgs or [document.inlg, 'any']:
+    for inlg in inlgs or [document.inlg.id, 'any']:
         q = q or req.params.get('query-{}'.format(inlg))
         if not q:
             continue
@@ -53,8 +52,8 @@ def iter_fragments(document, req, q=None, inlgs=None, options=None):
                         models.Page.text,
                         func.websearch_to_tsquery(config.stemmer(inlg), q),
                         str(options))) \
-                .filter(models.Page.document_pk == document.pk) \
-                .filter(config.tsearch(models.Page.terms, q, inlg))\
+                .filter(and_(models.Page.document_pk == document.pk,
+                             config.tsearch(models.Page.terms, q, inlg)))\
                 .order_by(models.Page.document_pk, models.Page.number),
                 lambda i: i[0].number,
             ):
